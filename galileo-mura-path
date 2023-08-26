@@ -1,4 +1,8 @@
 #!/bin/bash
 
+# Just finds whatever we got from the blob.
+# Does NOT match the serial right now at all.
+# BIG TODO!
+
 mura_path=$(ls /tmp/mura/*.json)
 echo "${mura_path%.*}"
