@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -euo pipefail
+
 # Just finds whatever we got from the blob.
 # Does NOT match the serial right now at all.
 # BIG TODO!
