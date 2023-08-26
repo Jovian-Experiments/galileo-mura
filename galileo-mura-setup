@@ -1,0 +1,9 @@
+#!/bin/bash
+
+rm -rf /tmp/mura
+
+mkdir -p /tmp/mura
+
+galileo-mura-extractor /tmp/mura/blob.tar
+tar -xvf /tmp/mura/blob.tar -C /tmp/mura
+rm -rf /tmp/mura/blob.tar

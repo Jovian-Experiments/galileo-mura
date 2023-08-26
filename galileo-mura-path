@@ -1,0 +1,4 @@
+#!/bin/bash
+
+mura_path=$(ls /tmp/mura/*.json)
+echo "${mura_path%.*}"
