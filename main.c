@@ -1,71 +1,175 @@
-#include <stdio.h>
+#define _POSIX_C_SOURCE 200809L
+#define _FILE_OFFSET_BITS 64
+
+#include <sys/types.h>
+
 #include <errno.h>
+#include <stdbool.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 #define MURA_BLOB_SIZE (2048 * 1024)
+
+struct buffer {
+    char *data;
+    size_t size;
+};
 
 /*
  * No need to free anything on error paths.
  * The kernel will do it for us when we close.
  */
+
+static struct buffer read_file(const char *path, const char *mode, off_t offset, size_t size) {
+    FILE *file = fopen(path, mode);
+    if (!file) {
+        fprintf(stderr, "Failed to open %s: %s\n", path, strerror(errno));
+        return (struct buffer) { NULL, 0 };
+    }
+
+    if (!size) {
+        if (fseeko(file, 0, SEEK_END) != 0) {
+            fprintf(stderr, "Failed to seek in %s: %s\n", path, strerror(errno));
+            return (struct buffer) { NULL, 0 };
+        }
+
+        off_t fsize = ftello(file);
+        off_t remaining_size = fsize - offset;
+        if (remaining_size <= 0) {
+            fprintf(stderr, "Tried to seek to an invalid offset in %s.\n", path);
+            return (struct buffer) { NULL, 0 };
+        }
+
+        size = (size_t)remaining_size;
+    }
+
+    if (fseeko(file, offset, SEEK_SET) != 0) {
+        fprintf(stderr, "Failed to seek in %s: %s\n", path, strerror(errno));
+        return (struct buffer) { NULL, 0 };
+    }
+
+    struct buffer buf = { (char *)malloc(size + 1), size };
+    if ((size = fread(buf.data, 1, buf.size, file)) <= 0) {
+        if (!feof(file)) {
+            if (ferror(file))
+                fprintf(stderr, "Error reading %s: %s\n", path, strerror(errno));
+            else
+                fprintf(stderr, "Error reading %s: Unknown error\n", path);
+            return (struct buffer) { NULL, 0 };
+        }
+    }
+    buf.size = size;
+    /* Always null terminate incase we treat this as a string at some point */
+    buf.data[size] = '\0';
+
+    if (fclose(file) != 0) {
+        fprintf(stderr, "Failed to close file %s: %s\n", path, strerror(errno));
+        return (struct buffer) { NULL, 0 };
+    }
+
+    return buf;
+}
+
+static int write_file(const char *path, const char *mode, struct buffer data) {
+    FILE *file = fopen(path, mode);
+    if (!file) {
+        fprintf(stderr, "Failed to open %s: %s\n", path, strerror(errno));
+        return 1;
+    }
+
+    if (fwrite(data.data, 1, data.size, file) != data.size) {
+        fprintf(stderr, "Failed to write to file %s: %s\n", path, strerror(errno));
+        return 1;
+    }
+
+    if (fclose(file) != 0) {
+        fprintf(stderr, "Failed to close file %s: %s\n", path, strerror(errno));
+        return 1;
+    }
+
+    return 0;
+}
+
 int main(int argc, char* argv[]) {
-    if (argc != 2) {
-        printf("Usage: %s <mura out tar>\n", argv[0]);
+    (void)argc;
+    (void)argv;
+
+    /*
+     * Don't take in an arg to where this is written,
+     * as this is run as root, so could write anywhere based on
+     * user input... Ough.
+     */
+    const char *out_file_path = "/tmp/mura/blob.tar";
+
+    /* Check euid is root */
+    if (geteuid() != 0) {
+        fprintf(stderr, "Must be ran as root via suid.\n");
         return 1;
     }
 
-    const char *out_file_path = argv[1];
+    /* Get real uid and gid to get ownership of mura tar. */
+    uid_t real_uid = getuid();
+    gid_t real_gid = getgid();
 
-    /* Open the output file */
-    FILE *out_file = fopen(out_file_path, "wb");
-    if (!out_file) {
-        fprintf(stderr, "Failed to open %s: %s\n", out_file_path, strerror(errno));
+    /* Check we are on Galileo */
+    struct buffer vendor = read_file("/sys/devices/virtual/dmi/id/sys_vendor", "r", 0, 0);
+    if (!vendor.size)
+        return 1;
+    struct buffer product = read_file("/sys/devices/virtual/dmi/id/product_name", "r", 0, 0);
+    if (!product.size)
+        return 1;
+
+    if (strncmp(vendor.data, "Valve\n", vendor.size)) {
+        fprintf(stderr, "Vendor didn't match. Was: %.*s Expected: %s\n", (int)vendor.size, vendor.data, "Valve\n");
         return 1;
     }
 
-    /* Open /dev/mem to see all of RAM (scary!) */
-    FILE *mem_file = fopen("/dev/mem", "rb");
-    if (!mem_file) {
-        fprintf(stderr, "Failed to open /dev/mem: %s\n", strerror(errno));
+    if (strncmp(product.data, "Galileo\n", product.size)) {
+        fprintf(stderr, "Product didn't match. Was: %.*s Expected: %s\n", (int)product.size, product.data, "Galileo\n");
         return 1;
     }
 
-    /* Seek to where the mura blob is */
-    if (fseek(mem_file, 0xFFAA0000, SEEK_SET) != 0) {
-        fprintf(stderr, "Failed to seek memory: %s\n", strerror(errno));
+    /*
+     * Grab display serial from dp aux.
+     * We only do mura correction on SDC screens, which have a serial of length 5.
+     */
+    struct buffer display_serial = read_file("/dev/drm_dp_aux0", "rb", 864, 5);
+    if (display_serial.size < 5) {
+        fprintf(stderr, "Failed to get display serial.\n");
         return 1;
     }
 
-    /* Readback the mura blob */
-    char mura_blob_buffer[MURA_BLOB_SIZE];
-    if (fread(mura_blob_buffer, 1, MURA_BLOB_SIZE, mem_file) != MURA_BLOB_SIZE) {
-        if (feof(mem_file))
-            fprintf(stderr, "Error reading memory: Unexpected end of file\n");
-        else if (ferror(mem_file))
-            fprintf(stderr, "Error reading memory: %s\n", strerror(errno));
+    /* Grab the mura blob from our mapped bios region. */
+    struct buffer mura_blob = read_file("/dev/mem", "rb", 0xFFAA0000, MURA_BLOB_SIZE);
+    if (mura_blob.size != MURA_BLOB_SIZE) {
+        fprintf(stderr, "Failed to get mura blob.\n");
         return 1;
     }
 
-    /* Close the file to memory (phew!) */
-    if (fclose(mem_file) != 0) {
-        fprintf(stderr, "Failed to close memory file: %s\n", strerror(errno));
-        return 1;
-    }
-    mem_file = NULL;
-
-    /* Write out our mura blob to the right file. */
-    if (fwrite(mura_blob_buffer, 1, MURA_BLOB_SIZE, out_file) != MURA_BLOB_SIZE) {
-        fprintf(stderr, "Failed to write to output file: %s\n", strerror(errno));
+    /* Write that out to the blob location. */
+    if (write_file(out_file_path, "wb", mura_blob)) {
+        fprintf(stderr, "Failed to write mura blob.\n");
         return 1;
     }
 
-    /* Close everything. */
-    if (fclose(out_file) != 0) {
-        fprintf(stderr, "Failed to close output file: %s\n", strerror(errno));
+    if (chown(out_file_path, real_uid, real_gid) != 0) {
+        fprintf(stderr, "Failed to set permissions for mura blob.\n");
         return 1;
     }
 
     /* Hooray! */
-    printf("Successfully written mura blob to: %s. My relief is almost palpable...\n", out_file_path);
+    printf("Success! My relief is almost palpable...\n");
+    printf("Mura Blob Path: %s\n", out_file_path);
+    /* Valve and Galileo already have newlines in the dmi vendor/product. Heh... */
+    printf("Vendor: %.*s", (int)vendor.size, vendor.data);
+    printf("Product: %.*s", (int)product.size, product.data);
+    printf("Display Serial: %1X%1X%1X%1X%1X\n",
+        (unsigned int)display_serial.data[0] & 0xFFu,
+        (unsigned int)display_serial.data[1] & 0xFFu,
+        (unsigned int)display_serial.data[2] & 0xFFu,
+        (unsigned int)display_serial.data[3] & 0xFFu,
+        (unsigned int)display_serial.data[4] & 0xFFu);
     return 0;
 }

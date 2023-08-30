@@ -3,9 +3,21 @@
 set -euo pipefail
 
 rm -rf /tmp/mura
-
 mkdir -p /tmp/mura
 
-galileo-mura-extractor /tmp/mura/blob.tar
-tar -xvf /tmp/mura/blob.tar -C /tmp/mura
+display_serial=$(/usr/bin/galileo-mura-extractor | sed -n 's/.*Display Serial: \(.*\)/\1/p')
+tar -xf /tmp/mura/blob.tar -C /tmp/mura
 rm -rf /tmp/mura/blob.tar
+
+# Make sure that we have the files.
+ls /tmp/mura/"$display_serial"_red.png > /dev/null
+ls /tmp/mura/"$display_serial"_green.png > /dev/null
+ls /tmp/mura/"$display_serial".json > /dev/null
+
+json_serial=$(sed -n 's/.*"serialNumber"\s*:\s*"\([^"]*\)".*/\1/p' /tmp/mura/"$display_serial".json)
+if [[ "$display_serial" != "$json_serial" ]]; then
+  echo "JSON serial didn't match display serial" >&2
+  exit 1
+fi
+
+echo /tmp/mura/$display_serial
