@@ -5,7 +5,9 @@ set -euo pipefail
 rm -rf /tmp/mura
 mkdir -p /tmp/mura
 
-display_serial=$(/usr/bin/galileo-mura-extractor | sed -n 's/.*Display Serial: \(.*\)/\1/p')
+/usr/bin/galileo-mura-extractor > /tmp/mura/info.txt
+
+display_serial=$(cat /tmp/mura/info.txt | sed -n 's/.*Display Serial: \(.*\)/\1/p')
 tar -xf /tmp/mura/blob.tar -C /tmp/mura
 rm -rf /tmp/mura/blob.tar
 
@@ -13,6 +15,26 @@ rm -rf /tmp/mura/blob.tar
 ls /tmp/mura/"$display_serial"_red.png > /dev/null
 ls /tmp/mura/"$display_serial"_green.png > /dev/null
 ls /tmp/mura/"$display_serial".json > /dev/null
+
+if ! grep -q "Manufacturer: SDC" /tmp/mura/info.txt; then
+  echo "Not using mura correction for this unit as it is not SDC." >&2
+  exit 1
+fi
+
+json_major_version=$(sed -n 's/.*"version" : "\([0-9]\)\..*"/\1/p' /tmp/mura/"$display_serial".json)
+json_major_version="${json_major_version//[^[:digit:]]/}"
+
+use_mura=0
+if [ "$json_major_version" -eq 0 ]; then
+  use_mura=1
+elif [ "$json_major_version" -ge 2 ]; then
+  use_mura=1
+fi
+
+if [ "$use_mura" -eq 0 ]; then
+  echo "Not using mura correction for this unit due to the mura version: \"$json_major_version\"" >&2
+  exit 1
+fi
 
 json_serial=$(sed -n 's/.*"serialNumber"\s*:\s*"\([^"]*\)".*/\1/p' /tmp/mura/"$display_serial".json)
 if [[ "$display_serial" != "$json_serial" ]]; then
