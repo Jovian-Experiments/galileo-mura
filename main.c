@@ -127,6 +127,9 @@ int main(int argc, char* argv[]) {
     struct buffer product = read_file("/sys/devices/virtual/dmi/id/product_name", "r", 0, 0);
     if (!product.size)
         return 1;
+    struct buffer deck_serial = read_file("/sys/devices/virtual/dmi/id/product_serial", "r", 0, 0);
+    if (!product.size)
+        return 1;
 
     if (strncmp(vendor.data.s8, "Valve\n", vendor.size)) {
         fprintf(stderr, "Vendor didn't match. Was: %.*s Expected: %s\n", (int)vendor.size, vendor.data.s8, "Valve\n");
@@ -204,6 +207,7 @@ int main(int argc, char* argv[]) {
     /* Valve and Galileo already have newlines in the dmi vendor/product. Heh... */
     printf("Vendor: %.*s", (int)vendor.size, vendor.data.s8);
     printf("Product: %.*s", (int)product.size, product.data.s8);
+    printf("Deck Serial: %.*s", (int)deck_serial.size, deck_serial.data.s8);
     printf("Manufacturer: %s\n", is_boe ? "BOE" : "SDC");
 #ifdef DEBUG_LOG_TDM
     printf("TDM: %02hhX%02hhX\n", tdm_blob.data.u8[0], tdm_blob.data.u8[1]);
