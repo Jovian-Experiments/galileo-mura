@@ -19,9 +19,13 @@ mkdir -p "$mura_base_path"
 
 if ./galileo-mura-download "$display_serial" "$deck_serial" "$mura_base_path"; then
   rm -rf /tmp/mura
-  mkdir -p "$mura_base_path"/"$display_serial"
-  tar -xf "$mura_base_path"/"$display_serial".tar -C "$mura_base_path"/"$display_serial"
   mura_path="$mura_base_path/$display_serial"
+  mkdir -p "$mura_path"
+  mura_tar_file="$mura_base_path/$display_serial.tar"
+  mura_json_file="$mura_path/$display_serial.json"
+  if [ ! -f "$mura_json_file" ]; then
+    tar -xf "$mura_tar_file" -C "$mura_path"
+  fi
 else
   tar -xf /tmp/mura/blob.tar -C /tmp/mura
   rm -rf /tmp/mura/blob.tar
@@ -67,11 +71,10 @@ if [[ "$display_serial" != "$json_serial" ]]; then
   exit 1
 fi
 
+# Grody! No gamescopectl yet kskdsjsadjjksjkjsj
+xprop -root -f GAMESCOPE_COLOR_MURA_CORRECTION_IMAGE 8s -set GAMESCOPE_COLOR_MURA_CORRECTION_IMAGE "$mura_path/$display_serial"
 
 echo "Success! All good. Using mura at: $mura_path"
-
-# Grody! No gamescopectl yet kskdsjsadjjksjkjsj
-xprop -root -f GAMESCOPE_COLOR_MURA_CORRECTION_IMAGE 8s -set GAMESCOPE_COLOR_MURA_CORRECTION_IMAGE "$mura_path"
 
 exit 0
 

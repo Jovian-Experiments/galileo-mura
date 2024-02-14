@@ -11,8 +11,10 @@ mura_hash_short="${mura_hash:0:2}"
 
 mura_url=`echo "https://steamdeck-images.steamos.cloud/factorydata/muracal/$mura_hash_short/$mura_hash.tar"`
 mura_tar_file="$mura_base_path/$display_serial.tar"
+mura_path="$mura_base_path/$display_serial"
+mura_json_file="$mura_path/$display_serial.json"
 
-if [ -f $mura_tar_file ]; then
+if [ -f $mura_json_file ]; then
     exit 0
 fi
 
