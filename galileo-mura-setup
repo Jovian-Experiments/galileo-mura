@@ -67,7 +67,11 @@ if [[ "$display_serial" != "$json_serial" ]]; then
   exit 1
 fi
 
+
 echo "Success! All good. Using mura at: $mura_path"
+
+# Grody! No gamescopectl yet kskdsjsadjjksjkjsj
+xprop -root -f GAMESCOPE_COLOR_MURA_CORRECTION_IMAGE 8s -set GAMESCOPE_COLOR_MURA_CORRECTION_IMAGE "$mura_path"
 
 exit 0
 
