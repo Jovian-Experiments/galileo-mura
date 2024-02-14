@@ -6,45 +6,64 @@ display_serial=$1
 deck_serial=$2
 mura_base_path=$3
 
-mura_hash=`echo "ee794484f677ad46bc34a2613e3375294e4aea4f8525993c96d3ad40f5938cfc" "$deck_serial"_"$display_serial" | sha256sum | cut -d " " -f 1`
+mura_hash=$(echo "ee794484f677ad46bc34a2613e3375294e4aea4f8525993c96d3ad40f5938cfc" "$deck_serial"_"$display_serial" | sha256sum | cut -d " " -f 1)
 mura_hash_short="${mura_hash:0:2}"
 
-mura_url=`echo "https://steamdeck-images.steamos.cloud/factorydata/muracal/$mura_hash_short/$mura_hash.tar"`
+mura_url="https://steamdeck-images.steamos.cloud/factorydata/muracal/$mura_hash_short/$mura_hash.tar"
 mura_tar_file="$mura_base_path/$display_serial.tar"
 mura_path="$mura_base_path/$display_serial"
 mura_json_file="$mura_path/$display_serial.json"
 
-if [ -f $mura_json_file ]; then
+if [ -f "$mura_json_file" ]; then
+    echo "[galileo-mura] Not downloading, we already have a mura file for this display!"
     exit 0
 fi
 
 mura_invalid_file="$mura_base_path/$display_serial"_invalid
 
 should_get_mura=0
-if [ -f $mura_invalid_file ]; then
-    if test `find "$mura_invalid_file" -mmin +20160`; then
+if [ -f "$mura_invalid_file" ]; then
+    if test "$(find "$mura_invalid_file" -mmin +20160)"; then
         should_get_mura=1
     else
         should_get_mura=0
-        echo "Not attempting to download mura, we tried too recently."
     fi
 else
     should_get_mura=1
 fi
 
 if [ "$should_get_mura" -eq 0 ]; then
+    echo "[galileo-mura] Not attempting to download mura, we tried too recently."
     exit 1
 fi
 
-echo "Going to download mura for $display_serial from $mura_url"
+# Sleep for 5s to make sure we have the network up.
+sleep 5s
 
-wget -O "$mura_tar_file" "$mura_url" || rm -f "$mura_tar_file"
+echo "[galileo-mura] Going to download mura for $display_serial from $mura_url"
 
-if [ -f $mura_tar_file ]; then
-    exit 0
+status_code=$(wget -NS -O "$mura_tar_file" "$mura_url" 2>&1 | grep "HTTP/" | awk '{print $2}')
+
+if [ "$status_code" = "200" ]; then
+    if [ -f "$mura_tar_file" ]; then
+        echo "[galileo-mura] Got mura file! $mura_tar_file"
+        exit 0
+    else
+        echo "[galileo-mura] Didn't get mura file... but got 200, peculiar!"
+        exit 1
+    fi
 else
-    rm -f "$mura_invalid_file" || true
-    touch "$mura_invalid_file"
+    echo "[galileo-mura] Discarding anything we got due to status code: $status_code"
+
+    # Make sure we didn't write any 0 byte file or whatever.
+    rm -rf "$mura_tar_file" || true
+
+    # If we got 404, then mark it as invalid, so we don't try again in two weeks.
+    # Other codes or lack thereof don't do this as it could be some network thing.
+    if [ "$status_code" = "404" ]; then
+        echo "[galileo-mura] Touching invalid file as we got a 404"
+        rm -f "$mura_invalid_file" || true
+        touch "$mura_invalid_file"
+    fi
     exit 1
 fi
-

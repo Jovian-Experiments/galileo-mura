@@ -10,12 +10,18 @@ cleanup_fail()
 rm -rf /tmp/mura
 mkdir -p /tmp/mura
 /usr/bin/galileo-mura-extractor > /tmp/mura/info.txt
-display_serial=$(cat /tmp/mura/info.txt | sed -n 's/.*Display Serial: \(.*\)/\1/p')
-deck_serial=$(cat /tmp/mura/info.txt | sed -n 's/.*Deck Serial: \(.*\)/\1/p')
-manufacturer=$(cat /tmp/mura/info.txt | sed -n 's/.*Manufacturer: \(.*\)/\1/p')
+display_serial=$(sed -n 's/.*Display Serial: \(.*\)/\1/p' < /tmp/mura/info.txt)
+deck_serial=$(sed -n 's/.*Deck Serial: \(.*\)/\1/p' < /tmp/mura/info.txt)
+manufacturer=$(sed -n 's/.*Manufacturer: \(.*\)/\1/p' < /tmp/mura/info.txt)
 
 mura_base_path=/home/deck/.config/gamescope/mura
 mkdir -p "$mura_base_path"
+
+if [ "$manufacturer" != "SDC" ]; then
+  echo "[galileo-mura] Not using mura correction for this unit as it is not SDC."
+  cleanup_fail
+  exit 1
+fi
 
 if ./galileo-mura-download "$display_serial" "$deck_serial" "$mura_base_path"; then
   rm -rf /tmp/mura
@@ -33,7 +39,7 @@ else
 fi
 
 if [ ! -f "$mura_path/$display_serial"_red.png ]; then
-  echo "Missing mura images, bailing out."
+  echo "[galileo-mura] Missing mura images from tar, bailing out."
   cleanup_fail
   exit 1
 fi
@@ -44,12 +50,6 @@ ls "$mura_path/$display_serial"_red.png > /dev/null
 ls "$mura_path/$display_serial"_green.png > /dev/null
 ls "$mura_path/$display_serial".json > /dev/null
 
-if [ "$manufacturer" != "SDC" ]; then
-  echo "Not using mura correction for this unit as it is not SDC." >&2
-  cleanup_fail
-  exit 1
-fi
-
 json_major_version=$(sed -n 's/.*"version" : "\([0-9]\)\..*"/\1/p' "$mura_path/$display_serial".json)
 json_major_version="${json_major_version//[^[:digit:]]/}"
 
@@ -59,14 +59,14 @@ if [ "$json_major_version" -ge 2 ]; then
 fi
 
 if [ "$use_mura" -eq 0 ]; then
-  echo "Not using mura correction for this unit due to the mura version: \"$json_major_version\"" >&2
+  echo "[galileo-mura] Not using mura correction for this unit due to the mura version: \"$json_major_version\""
   cleanup_fail
   exit 1
 fi
 
 json_serial=$(sed -n 's/.*"serialNumber"\s*:\s*"\([^"]*\)".*/\1/p' "$mura_path/$display_serial".json)
 if [[ "$display_serial" != "$json_serial" ]]; then
-  echo "JSON serial didn't match display serial" >&2
+  echo "[galileo-mura] JSON serial didn't match display serial"
   cleanup_fail
   exit 1
 fi
@@ -74,7 +74,7 @@ fi
 # Grody! No gamescopectl yet kskdsjsadjjksjkjsj
 xprop -root -f GAMESCOPE_COLOR_MURA_CORRECTION_IMAGE 8s -set GAMESCOPE_COLOR_MURA_CORRECTION_IMAGE "$mura_path/$display_serial"
 
-echo "Success! All good. Using mura at: $mura_path"
+echo "[galileo-mura] Success! All good. Using mura at: $mura_path"
 
 exit 0
 
