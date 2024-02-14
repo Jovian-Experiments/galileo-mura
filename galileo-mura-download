@@ -1,0 +1,48 @@
+#!/bin/bash
+
+set -euo pipefail
+
+display_serial=$1
+deck_serial=$2
+mura_base_path=$3
+
+mura_hash=`echo "ee794484f677ad46bc34a2613e3375294e4aea4f8525993c96d3ad40f5938cfc" "$deck_serial"_"$display_serial" | sha256sum | cut -d " " -f 1`
+mura_hash_short="${mura_hash:0:2}"
+
+mura_url=`echo "https://steamdeck-images.steamos.cloud/factorydata/muracal/$mura_hash_short/$mura_hash.tar"`
+mura_tar_file="$mura_base_path/$display_serial.tar"
+
+if [ -f $mura_tar_file ]; then
+    exit 0
+fi
+
+mura_invalid_file="$mura_base_path/$display_serial"_invalid
+
+should_get_mura=0
+if [ -f $mura_invalid_file ]; then
+    if test `find "$mura_invalid_file" -mmin +20160`; then
+        should_get_mura=1
+    else
+        should_get_mura=0
+        echo "Not attempting to download mura, we tried too recently."
+    fi
+else
+    should_get_mura=1
+fi
+
+if [ "$should_get_mura" -eq 0 ]; then
+    exit 1
+fi
+
+echo "Going to download mura for $display_serial from $mura_url"
+
+wget -O "$mura_tar_file" "$mura_url" || rm -f "$mura_tar_file"
+
+if [ -f $mura_tar_file ]; then
+    exit 0
+else
+    rm -f "$mura_invalid_file" || true
+    touch "$mura_invalid_file"
+    exit 1
+fi
+
