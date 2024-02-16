@@ -11,7 +11,9 @@ rm -rf /tmp/mura
 mkdir -p /tmp/mura
 /usr/bin/galileo-mura-extractor > /tmp/mura/info.txt
 display_serial=$(sed -n 's/.*Display Serial: \(.*\)/\1/p' < /tmp/mura/info.txt)
+display_serial=${display_serial^^}
 deck_serial=$(sed -n 's/.*Deck Serial: \(.*\)/\1/p' < /tmp/mura/info.txt)
+deck_serial=${deck_serial^^}
 manufacturer=$(sed -n 's/.*Manufacturer: \(.*\)/\1/p' < /tmp/mura/info.txt)
 
 mura_base_path=/home/deck/.config/gamescope/mura
