@@ -23,7 +23,7 @@ if [ "$manufacturer" != "SDC" ]; then
   exit 1
 fi
 
-if ./galileo-mura-download "$display_serial" "$deck_serial" "$mura_base_path"; then
+if galileo-mura-download "$display_serial" "$deck_serial" "$mura_base_path"; then
   rm -rf /tmp/mura
   mura_path="$mura_base_path/$display_serial"
   mkdir -p "$mura_path"
